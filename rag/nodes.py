@@ -28,7 +28,7 @@ from rag.build_index import load_index, embed_text, EMBED_MODEL
 _INDEX: faiss.Index | None = None
 _TEXTS: list[str] | None = None
 
-GENERATION_MODEL = "llama3.3"     # ollama pull llama3.3
+GENERATION_MODEL = "llama3.2"     # ollama pull llama3.2
 TOP_K = 6                          # number of chunks to retrieve
 
 

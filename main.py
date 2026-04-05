@@ -13,12 +13,13 @@ The FAISS index must already be built before using this script:
 """
 
 from rag.graph import build_graph
+from rag.nodes import GENERATION_MODEL
 
 
 def main():
     print("\n" + "█" * 50)
     print("  NBA.i — RAG Intelligence System")
-    print("  Powered by Ollama llama3.3 + FAISS")
+    print(f"  Powered by Ollama {GENERATION_MODEL} + FAISS")
     print("█" * 50 + "\n")
 
     # Compile the graph once (loads FAISS index on first query)
