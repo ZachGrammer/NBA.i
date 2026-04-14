@@ -19,7 +19,7 @@ from rag.nodes import GENERATION_MODEL
 def main():
     print("\n" + "█" * 50)
     print("  NBA.i — RAG Intelligence System")
-    print(f"  Powered by Ollama {GENERATION_MODEL} + FAISS")
+    print(f"  Powered by Ollama {GENERATION_MODEL}")
     print("█" * 50 + "\n")
 
     # Compile the graph once (loads FAISS index on first query)
