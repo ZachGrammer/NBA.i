@@ -1,0 +1,2 @@
+# Generated narrative documents are not committed to git
+*.json

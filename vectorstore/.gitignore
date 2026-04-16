@@ -1,0 +1,3 @@
+# FAISS index files are generated — not committed to git
+*.index
+nba_meta.pkl

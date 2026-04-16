@@ -1,0 +1,22 @@
+# NBA.i — Dependencies
+# Install with: pip install -r requirements.txt
+
+# NBA data
+nba_api>=1.4.0
+
+# Embeddings & generation (local via Ollama)
+ollama>=0.2.0
+
+# Vector store
+faiss-cpu>=1.8.0
+
+# LangGraph orchestration
+langgraph>=0.1.0
+
+# Data processing
+pandas>=2.2.0
+numpy>=1.26.0
+
+# Future: FastAPI server
+fastapi>=0.111.0
+uvicorn[standard]>=0.29.0
