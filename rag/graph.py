@@ -1,83 +1,93 @@
 """
 graph.py
 --------
-Compiles the deterministic LangGraph workflow for the NBA RAG system.
+Compiles the LangGraph workflow for the NBA RAG system.
 
 Flow
 ----
     question
         │
         ▼
-    retrieve_context     ← FAISS semantic search
+    route_question
         │
         ▼
-    analyze_matchup      ← deduplicate + format context
-        │
-        ▼
-    generate_answer      ← Ollama llama3.3 generation
-        │
-        ▼
-    END
-
-Usage
------
-    from rag.graph import build_graph
-
-    graph = build_graph()
-    result = graph.invoke({"question": "Who dominates rebounds tonight?"})
-    print(result["final_answer"])
+    try_structured_answer
+        ├── if structured answer found ──► END
+        └── otherwise ───────────────────► retrieve_context
+                                              │
+                                              ▼
+                                          answer_question
+                                              │
+                                              ▼
+                                              END
 """
 
-from langgraph.graph import StateGraph, END
+from __future__ import annotations
 
+from langgraph.graph import END, StateGraph
+
+from rag.nodes import (
+    answer_question,
+    retrieve_context,
+    route_question,
+    try_structured_answer,
+)
 from rag.state import NBAGraphState
-from rag.nodes import retrieve_context, analyze_matchup, generate_answer
 
 
-def build_graph() -> StateGraph:
+def _after_structured(state: NBAGraphState) -> str:
+    """
+    Decide whether to stop after structured handling or continue
+    into semantic retrieval.
+    """
+    if state.get("structured_answer_found"):
+        return "done"
+    return "semantic"
+
+
+def build_graph():
     """
     Construct and compile the NBA RAG LangGraph.
 
-    Returns a compiled graph that can be invoked with:
-        graph.invoke({"question": "..."})
-
-    The graph is deterministic — no conditional branches at MVP.
-    Add branching (e.g. query rewriting on low-confidence retrieval)
-    in future iterations.
+    Usage:
+        graph = build_graph()
+        result = graph.invoke({"question": "Who scored the most in their last 5 games?"})
+        print(result["final_answer"])
     """
-
-    # 1. Initialise the state graph with our typed state schema
     workflow = StateGraph(NBAGraphState)
 
-    # 2. Register nodes (name → function)
+    workflow.add_node("route_question", route_question)
+    workflow.add_node("try_structured_answer", try_structured_answer)
     workflow.add_node("retrieve_context", retrieve_context)
-    workflow.add_node("analyze_matchup", analyze_matchup)
-    workflow.add_node("generate_answer", generate_answer)
+    workflow.add_node("answer_question", answer_question)
 
-    # 3. Define directed edges (execution order)
-    workflow.set_entry_point("retrieve_context")
-    workflow.add_edge("retrieve_context", "analyze_matchup")
-    workflow.add_edge("analyze_matchup", "generate_answer")
-    workflow.add_edge("generate_answer", END)
+    workflow.set_entry_point("route_question")
+    workflow.add_edge("route_question", "try_structured_answer")
 
-    # 4. Compile into an executable runnable
+    workflow.add_conditional_edges(
+        "try_structured_answer",
+        _after_structured,
+        {
+            "done": END,
+            "semantic": "retrieve_context",
+        },
+    )
+
+    workflow.add_edge("retrieve_context", "answer_question")
+    workflow.add_edge("answer_question", END)
+
     return workflow.compile()
 
 
-# ---------------------------------------------------------------------------
-# Quick smoke-test entry point
-# ---------------------------------------------------------------------------
 if __name__ == "__main__":
-    import json
-
     graph = build_graph()
 
     test_questions = [
-        "Who has the matchup advantage tonight?",
-        "Which player is likely to outperform their average?",
-        "Who dominates rebounds in this matchup?",
+        "Who are the best 3 point shooters this season?",
+        "Who scored the most points in their last 5 games?",
+        "Who are the best corner 3 shooters?",
+        "Compare Stephen Curry and Damian Lillard",
         "How has LeBron James performed in the last 5 games?",
-        "What trends suggest an upset tonight?",
     ]
 
     for q in test_questions:
@@ -85,4 +95,5 @@ if __name__ == "__main__":
         print(f"Q: {q}")
         print("=" * 60)
         result = graph.invoke({"question": q})
-        print(result["final_answer"])
+        print(result.get("final_answer", result.get("answer", "No answer generated.")))
+        print(f"\nMode: {result.get('retrieval_mode', 'unknown')}")

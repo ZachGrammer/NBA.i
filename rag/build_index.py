@@ -1,152 +1,144 @@
 """
 build_index.py
 --------------
-Loads processed narrative documents and builds a FAISS vector index
+Loads processed semantic documents and builds a FAISS vector index
 using Ollama's nomic-embed-text embedding model.
 
-The index and the raw texts are persisted to /vectorstore so they can be
+Each document is expected to be a dict:
+{
+  "text": "...",
+  "metadata": {...}
+}
+
+The index and matching metadata are persisted to /vectorstore so they can be
 loaded at query time without re-embedding.
-
-Usage
------
-    # Step 1 – ingest first (only needed when data refreshes)
-    python -m rag.ingest
-
-    # Step 2 – build / rebuild the FAISS index
-    python -m rag.build_index
 """
 
-import os
+from __future__ import annotations
+
 import json
+import os
 import pickle
-import numpy as np
+
 import faiss
+import numpy as np
 import ollama
 
-# ---------------------------------------------------------------------------
-# Paths
-# ---------------------------------------------------------------------------
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DOCS_PATH = os.path.join(PROJECT_ROOT, "data", "processed_docs", "nba_docs.json")
 VECTORSTORE_DIR = os.path.join(PROJECT_ROOT, "vectorstore")
 INDEX_PATH = os.path.join(VECTORSTORE_DIR, "nba.index")
-META_PATH = os.path.join(VECTORSTORE_DIR, "nba_meta.pkl")  # stores raw texts + ids
+META_PATH = os.path.join(VECTORSTORE_DIR, "nba_meta.pkl")
 
 os.makedirs(VECTORSTORE_DIR, exist_ok=True)
 
-# ---------------------------------------------------------------------------
-# Config
-# ---------------------------------------------------------------------------
-EMBED_MODEL = "nomic-embed-text"   # pulled via: ollama pull nomic-embed-text
-EMBED_DIM = 768                    # nomic-embed-text output dimension
+EMBED_MODEL = "nomic-embed-text"
+EMBED_DIM = 768
 
-
-# ---------------------------------------------------------------------------
-# Embedding helpers
-# ---------------------------------------------------------------------------
 
 def embed_text(text: str) -> np.ndarray:
-    """
-    Call the local Ollama embedding endpoint for a single text string.
-    Returns a 1-D float32 numpy array.
-    """
     response = ollama.embeddings(model=EMBED_MODEL, prompt=text)
-    vector = response["embedding"]
-    return np.array(vector, dtype=np.float32)
+    return np.array(response["embedding"], dtype=np.float32)
 
 
 def embed_batch(texts: list[str], batch_size: int = 32) -> np.ndarray:
-    """
-    Embed a list of texts in batches to avoid memory spikes.
-    Returns a 2-D float32 numpy array of shape (len(texts), EMBED_DIM).
-    """
     all_vectors = []
     total = len(texts)
 
     for i in range(0, total, batch_size):
-        batch = texts[i : i + batch_size]
-        print(f"  [embed] Processing batch {i // batch_size + 1} "
-              f"({i}–{min(i + batch_size, total)} of {total})...")
-
+        batch = texts[i:i + batch_size]
+        print(
+            f"  [embed] Processing batch {i // batch_size + 1} "
+            f"({i}–{min(i + batch_size, total)} of {total})..."
+        )
         batch_vecs = [embed_text(t) for t in batch]
         all_vectors.extend(batch_vecs)
 
     return np.vstack(all_vectors)
 
 
-# ---------------------------------------------------------------------------
-# FAISS index building
-# ---------------------------------------------------------------------------
-
 def build_faiss_index(vectors: np.ndarray) -> faiss.Index:
-    """
-    Build an L2-normalized inner-product FAISS index (cosine similarity).
-
-    Why IndexFlatIP + normalization?
-      - Exact nearest-neighbor search (no approximation errors at MVP scale)
-      - Cosine similarity via L2-normalised vectors + dot product
-      - Easy to swap for IndexIVFFlat later if corpus grows > 100k docs
-    """
-    # L2-normalise so inner product == cosine similarity
     faiss.normalize_L2(vectors)
-
     dim = vectors.shape[1]
-    index = faiss.IndexFlatIP(dim)   # Inner Product (cosine after L2 norm)
+    index = faiss.IndexFlatIP(dim)
     index.add(vectors)
     print(f"[build_index] FAISS index built: {index.ntotal} vectors, dim={dim}")
     return index
 
 
-# ---------------------------------------------------------------------------
-# Persistence
-# ---------------------------------------------------------------------------
-
-def save_index(index: faiss.Index, texts: list[str]) -> None:
-    """Persist the FAISS index and matching raw text list."""
+def save_index(index: faiss.Index, docs: list[dict]) -> None:
     faiss.write_index(index, INDEX_PATH)
     with open(META_PATH, "wb") as f:
-        pickle.dump(texts, f)
-    print(f"[build_index] Index saved → {INDEX_PATH}")
-    print(f"[build_index] Metadata saved → {META_PATH}")
+        pickle.dump(docs, f)
+    print(f"[build_index] Index saved -> {INDEX_PATH}")
+    print(f"[build_index] Metadata saved -> {META_PATH}")
 
 
-def load_index() -> tuple[faiss.Index, list[str]]:
-    """Load a previously built FAISS index + raw texts from disk."""
+def load_index() -> tuple[faiss.Index, list[dict]]:
     if not os.path.exists(INDEX_PATH):
         raise FileNotFoundError(
             f"No FAISS index found at {INDEX_PATH}. "
             "Run `python -m rag.build_index` first."
         )
+
     index = faiss.read_index(INDEX_PATH)
     with open(META_PATH, "rb") as f:
-        texts = pickle.load(f)
+        docs = pickle.load(f)
+
     print(f"[build_index] Loaded index with {index.ntotal} vectors.")
-    return index, texts
+    return index, docs
 
 
-# ---------------------------------------------------------------------------
-# Entry point
-# ---------------------------------------------------------------------------
 if __name__ == "__main__":
-    # 1. Load processed documents
     if not os.path.exists(DOCS_PATH):
         raise FileNotFoundError(
             f"Documents not found at {DOCS_PATH}. "
             "Run `python -m rag.ingest` first."
         )
 
-    with open(DOCS_PATH) as f:
-        docs: list[str] = json.load(f)
+    with open(DOCS_PATH, "r", encoding="utf-8") as f:
+        docs = json.load(f)
 
-    print(f"[build_index] Loaded {len(docs)} documents.")
+    if not isinstance(docs, list):
+        raise ValueError("nba_docs.json must contain a list of documents.")
 
-    # 2. Embed
-    print(f"[build_index] Embedding with model='{EMBED_MODEL}'...")
-    vectors = embed_batch(docs, batch_size=32)
+    normalized_docs = []
+    for doc in docs:
+        if isinstance(doc, str):
+            normalized_docs.append({"text": doc, "metadata": {}})
+        elif isinstance(doc, dict) and "text" in doc:
+            normalized_docs.append({
+                "text": str(doc["text"]),
+                "metadata": doc.get("metadata", {}),
+            })
+        else:
+            raise ValueError("Each document must be either a string or a dict with a 'text' field.")
 
-    # 3. Build FAISS index
+    texts = [doc["text"] for doc in normalized_docs]
+
+    print(f"[build_index] Loaded {len(normalized_docs)} documents.")
+
+    print("[build_index] Doc type counts:")
+    type_counts = {}
+    season_counts = {}
+    for doc in normalized_docs:
+        meta = doc.get("metadata", {})
+        doc_type = meta.get("doc_type", "unknown")
+        season = meta.get("season", "unknown")
+        type_counts[doc_type] = type_counts.get(doc_type, 0) + 1
+        season_counts[season] = season_counts.get(season, 0) + 1
+
+    for k, v in sorted(type_counts.items()):
+        print(f"  - {k}: {v}")
+
+    print("[build_index] Season counts:")
+    for k, v in sorted(season_counts.items(), reverse=True):
+        print(f"  - {k}: {v}")
+
+    print("[build_index] Embedding with model='nomic-embed-text'...")
+    vectors = embed_batch(texts, batch_size=32)
+
     index = build_faiss_index(vectors)
+    save_index(index, normalized_docs)
 
-    # 4. Save
-    save_index(index, docs)
     print("[build_index] Done.")
