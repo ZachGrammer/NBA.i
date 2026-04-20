@@ -37,7 +37,7 @@ INDEX_PATH = os.path.join(VECTORSTORE_DIR, "nba.index")
 META_PATH = os.path.join(VECTORSTORE_DIR, "nba_meta.pkl")
 
 EMBED_MODEL = "nomic-embed-text"
-GENERATION_MODEL = "qwen3.5"
+GENERATION_MODEL = "llama3.3"
 TOP_K = 6
 
 _index = None

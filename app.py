@@ -433,7 +433,7 @@ with nav_left:
             </div>
             <div style="width:1px; height:22px; background:rgba(255,255,255,0.2); flex-shrink:0;"></div>
             <div style="color:#6b7280; font-size:0.82rem; font-weight:400; white-space:nowrap;">
-                Real-time basketball intelligence · nba_api + Qwen 3.5
+                Real-time basketball intelligence · nba_api + llama3.3
             </div>
         </div>
         """,
