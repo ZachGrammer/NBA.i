@@ -5,16 +5,18 @@ All LLM prompt templates live here so they can be versioned, A/B tested,
 and swapped without touching graph logic.
 """
 
-# ---------------------------------------------------------------------------
-# Matchup analysis prompt
-# Receives: context (retrieved NBA narrative docs), question (user query)
-# ---------------------------------------------------------------------------
-MATCHUP_ANALYSIS_PROMPT = """\
-You are an expert NBA analyst with deep knowledge of player statistics,
-team dynamics, and game strategy.
+ANSWER_PROMPT = """\
+You are an NBA statistics assistant.
 
-Use ONLY the context below to answer the question. If the context does not
-contain enough information, say so — do not hallucinate stats.
+Answer the user's question using ONLY the retrieved context below.
+
+Rules:
+- Do not use outside knowledge.
+- Do not invent statistics, rankings, or comparisons.
+- If the context is incomplete, say so clearly.
+- Prefer summarizing what the retrieved player documents say rather than overgeneralizing.
+- If multiple chunks describe the same player from different angles (season summary, recent form, shot profile), combine them into one coherent answer.
+- Keep the answer concise, direct, and grounded.
 
 --- CONTEXT START ---
 {context}
@@ -22,16 +24,21 @@ contain enough information, say so — do not hallucinate stats.
 
 Question: {question}
 
-Provide a structured, data-driven analysis. Lead with the key insight,
-then support it with statistics from the context.
+Answer:
 """
 
-# ---------------------------------------------------------------------------
-# Retrieval query rewriting prompt  (optional future node)
-# ---------------------------------------------------------------------------
 REWRITE_QUERY_PROMPT = """\
-Rewrite the following NBA question into a concise search query that will
-surface the most relevant player and team statistics:
+Rewrite the following NBA question into a short retrieval query that preserves
+the user's intent and the most important entities.
+
+Focus on:
+- player names
+- team names
+- time windows
+- stat categories
+- player summary intent
+- shot profile intent
+- comparison intent
 
 Original question: {question}
 Rewritten query:

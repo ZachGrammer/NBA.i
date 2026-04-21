@@ -2,26 +2,60 @@
 state.py
 --------
 Defines the shared state object that flows through every node in the
-LangGraph pipeline.  Using TypedDict keeps the schema explicit and
-lets LangGraph validate data at each edge.
+LangGraph pipeline.
+
+This updated version supports both:
+- structured answers from CSV-backed logic
+- semantic retrieval + LLM fallback
 """
 
-from typing import TypedDict, List, Optional
+from __future__ import annotations
+
+from typing import Any, Optional, TypedDict
 
 
-class NBAGraphState(TypedDict):
+class NBAGraphState(TypedDict, total=False):
     """
     Central state bag passed between every LangGraph node.
 
     Fields
     ------
-    question       : The raw user question (e.g. "Who wins the matchup tonight?")
-    retrieved_docs : Raw document chunks returned by FAISS retrieval.
-    context        : Cleaned / concatenated text fed into the LLM prompt.
-    final_answer   : The model-generated answer returned to the caller.
+    question
+        The raw user question.
+
+    route_info
+        Routing decision from query_router.py, including route, intent,
+        stat, timeframe, zone, and comparison flags.
+
+    retrieval_mode
+        Human-readable label describing how the question was answered,
+        e.g. "structured_season_leaderboard" or "semantic_faiss".
+
+    structured_answer_found
+        True if structured logic answered the question directly.
+
+    retrieved_docs
+        Either:
+        - a list of semantic text chunks from FAISS, or
+        - structured rows used to answer the question.
+
+    context
+        Final context string passed to the LLM in semantic mode, or the
+        structured answer text when a structured path succeeds.
+
+    answer
+        Final answer returned to the app.
+
+    final_answer
+        Backward-compatible alias for older app/graph code that still
+        expects the field name "final_answer".
     """
 
     question: str
-    retrieved_docs: List[str]
+    route_info: dict[str, Any]
+    retrieval_mode: str
+    structured_answer_found: bool
+    retrieved_docs: list[Any]
     context: Optional[str]
+    answer: Optional[str]
     final_answer: Optional[str]
