@@ -794,6 +794,116 @@ def _shot_style_doc(row: pd.Series) -> dict:
     )
     return _doc(text, player_name, team, season, "shot_style")
 
+def _global_doc(text: str, doc_type: str, season: str = "all", scope: str = "global") -> dict:
+    return {
+        "text": text,
+        "metadata": {
+            "player_name": None,
+            "team_abbreviation": None,
+            "season": season,
+            "doc_type": doc_type,
+            "scope": scope,
+        },
+    }
+
+
+def _sorted_unique_names(df: pd.DataFrame, season: str | None = None) -> list[str]:
+    if df.empty or "player_name" not in df.columns:
+        return []
+
+    working = df
+    if season is not None and "season" in working.columns:
+        working = working[working["season"] == season]
+
+    names = working["player_name"].dropna().astype(str).unique().tolist()
+    return sorted(names)
+
+
+def _format_name_list(names: list[str], max_names: int = 60) -> str:
+    if not names:
+        return "none"
+
+    if len(names) <= max_names:
+        return ", ".join(names)
+
+    shown = names[:max_names]
+    remaining = len(names) - max_names
+    return f"{', '.join(shown)}, and {remaining} more"
+
+
+def _build_corpus_overview_docs(
+    season_stats_df: pd.DataFrame,
+    recent_games_df: pd.DataFrame,
+    shot_profile_df: pd.DataFrame,
+    shot_profile_overall_df: pd.DataFrame,
+) -> list[dict]:
+    docs: list[dict] = []
+
+    seasons = []
+    if not season_stats_df.empty and "season" in season_stats_df.columns:
+        seasons = sorted(season_stats_df["season"].dropna().astype(str).unique().tolist(), reverse=True)
+
+    season_player_counts = {}
+    recent_player_counts = {}
+    shot_player_counts = {}
+
+    if not season_stats_df.empty and "season" in season_stats_df.columns:
+        season_player_counts = (
+            season_stats_df.groupby("season")["player_name"].nunique().sort_index(ascending=False).to_dict()
+        )
+
+    if not recent_games_df.empty and "season" in recent_games_df.columns:
+        recent_player_counts = (
+            recent_games_df.groupby("season")["player_name"].nunique().sort_index(ascending=False).to_dict()
+        )
+
+    if not shot_profile_overall_df.empty and "season" in shot_profile_overall_df.columns:
+        shot_player_counts = (
+            shot_profile_overall_df.groupby("season")["player_name"].nunique().sort_index(ascending=False).to_dict()
+        )
+
+    overview_text = (
+        f"This NBA corpus contains data for the following seasons: {', '.join(seasons)}. "
+        f"It intentionally excludes 2025-26 because that season is incomplete. "
+        f"For season-level data, the corpus includes season summary and season style documents "
+        f"for players present in the ingested season stats dataset. "
+        f"For recent game coverage, the corpus includes recent game and recent summary documents "
+        f"for the top {DEFAULT_TOP_N_RECENT} scorers in each ingested season. "
+        f"For shot data coverage, the corpus includes shot profile split, shot profile overall, "
+        f"and shot style documents for the top {DEFAULT_TOP_N_SHOT_PLAYERS} selected players in each ingested season. "
+        f"Season-level player counts by season: {season_player_counts}. "
+        f"Recent-game coverage counts by season: {recent_player_counts}. "
+        f"Shot-profile coverage counts by season: {shot_player_counts}."
+    )
+    docs.append(_global_doc(overview_text, doc_type="corpus_overview", season="all", scope="global"))
+
+    for season in seasons:
+        season_players = _sorted_unique_names(season_stats_df, season=season)
+        recent_players = _sorted_unique_names(recent_games_df, season=season)
+        shot_players = _sorted_unique_names(shot_profile_overall_df, season=season)
+
+        season_text = (
+            f"For the {season} season, this corpus has season-level player documents for: "
+            f"{_format_name_list(season_players)}. "
+            f"It has recent-game coverage for: {_format_name_list(recent_players)}. "
+            f"It has shot-profile coverage for: {_format_name_list(shot_players)}."
+        )
+        docs.append(_global_doc(season_text, doc_type="season_coverage", season=season, scope="season"))
+
+    recent_all = _sorted_unique_names(recent_games_df)
+    shot_all = _sorted_unique_names(shot_profile_overall_df)
+    season_all = _sorted_unique_names(season_stats_df)
+
+    coverage_text = (
+        f"Coverage by document type in this NBA corpus is as follows. "
+        f"Players with season summary or season style coverage: {_format_name_list(season_all)}. "
+        f"Players with recent-game or recent-summary coverage: {_format_name_list(recent_all)}. "
+        f"Players with shot-profile-overall or shot-style coverage: {_format_name_list(shot_all)}."
+    )
+    docs.append(_global_doc(coverage_text, doc_type="coverage_by_doc_type", season="all", scope="global"))
+
+    return docs
+
 
 def build_documents(
     season_stats_df: pd.DataFrame,
@@ -813,9 +923,12 @@ def build_documents(
             docs.append(_recent_game_doc(row))
 
         grouped_recent = (
-            recent_games_df.sort_values(["season", "player_name", "game_date"], ascending=[False, True, False])
-            .groupby(["player_name", "team_abbreviation", "season"])
+            recent_games_df.sort_values(
+                ["season", "player_name", "game_date"],
+                ascending=[False, True, False],
+            ).groupby(["player_name", "team_abbreviation", "season"])
         )
+
         for (player_name, team, season), group in grouped_recent:
             docs.append(_recent_summary_doc(player_name, team, season, group.head(5).copy()))
 
@@ -828,6 +941,15 @@ def build_documents(
         for _, row in shot_profile_overall_df.iterrows():
             docs.append(_shot_profile_overall_doc(row))
             docs.append(_shot_style_doc(row))
+
+    docs.extend(
+        _build_corpus_overview_docs(
+            season_stats_df=season_stats_df,
+            recent_games_df=recent_games_df,
+            shot_profile_df=shot_profile_df,
+            shot_profile_overall_df=shot_profile_overall_df,
+        )
+    )
 
     return docs
 

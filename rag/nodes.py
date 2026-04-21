@@ -40,6 +40,12 @@ EMBED_MODEL = "nomic-embed-text"
 GENERATION_MODEL = "llama3.3"
 TOP_K = 6
 
+CORPUS_DOC_TYPES = {
+    "corpus_overview",
+    "season_coverage",
+    "coverage_by_doc_type",
+}
+
 _index = None
 _metadata = None
 
@@ -50,14 +56,16 @@ def _load_vectorstore() -> tuple[Any, list[dict]]:
     if _index is None:
         if not os.path.exists(INDEX_PATH):
             raise FileNotFoundError(
-                f"FAISS index not found at {INDEX_PATH}. Run `python -m rag.build_index` first."
+                f"FAISS index not found at {INDEX_PATH}. "
+                "Run `python -m rag.build_index` first."
             )
         _index = faiss.read_index(INDEX_PATH)
 
     if _metadata is None:
         if not os.path.exists(META_PATH):
             raise FileNotFoundError(
-                f"Metadata file not found at {META_PATH}. Run `python -m rag.build_index` first."
+                f"Metadata file not found at {META_PATH}. "
+                "Run `python -m rag.build_index` first."
             )
         with open(META_PATH, "rb") as f:
             _metadata = pickle.load(f)
@@ -72,7 +80,6 @@ def get_embedding(text: str) -> list[float]:
 
 def _generate_llm_answer(question: str, context: str) -> str:
     prompt = ANSWER_PROMPT.format(question=question, context=context)
-
     response = ollama.chat(
         model=GENERATION_MODEL,
         messages=[
@@ -88,7 +95,6 @@ def _generate_llm_answer(question: str, context: str) -> str:
             {"role": "user", "content": prompt},
         ],
     )
-
     return response["message"]["content"].strip()
 
 
@@ -122,8 +128,8 @@ def rank_docs_by_query(query: str, docs: list[dict], top_k: int = TOP_K) -> list
         return []
 
     query_vec = np.array(get_embedding(query), dtype="float32")
-
     scored = []
+
     for doc in docs:
         doc_vec = np.array(get_embedding(doc["text"]), dtype="float32")
         score = _cosine_score(query_vec, doc_vec)
@@ -135,7 +141,6 @@ def rank_docs_by_query(query: str, docs: list[dict], top_k: int = TOP_K) -> list
 
 def retrieve_semantic_docs_global(query: str, k: int = TOP_K) -> list[dict]:
     index, metadata = _load_vectorstore()
-
     query_embedding = np.array([get_embedding(query)], dtype="float32")
     faiss.normalize_L2(query_embedding)
     _, indices = index.search(query_embedding, k)
@@ -154,13 +159,24 @@ def format_semantic_context(docs: list[dict]) -> str:
     return "\n\n".join(doc["text"] for doc in docs)
 
 
-def _resolve_semantic_season(query: str) -> str:
+def _resolve_semantic_season(query: str, route_info: dict | None = None) -> str | None:
+    route_info = route_info or {}
+    if route_info.get("intent") == "corpus_lookup":
+        return extract_season_reference(query)
     return extract_season_reference(query) or LATEST_COMPLETED_SEASON
 
 
-def expand_semantic_query(query: str) -> str:
+def expand_semantic_query(query: str, route_info: dict | None = None) -> str:
     q = query.lower().strip()
-    season = _resolve_semantic_season(query)
+    route_info = route_info or {}
+    season = _resolve_semantic_season(query, route_info)
+
+    if route_info.get("intent") == "corpus_lookup":
+        season_part = f" {season}" if season else ""
+        return (
+            f"{query}{season_part} corpus overview season coverage coverage by doc type "
+            "available seasons covered players recent game coverage shot profile coverage"
+        )
 
     if "what kind of player is" in q:
         player = re.sub(r"(?i)what kind of player is", "", query).replace("?", "").strip()
@@ -183,7 +199,7 @@ def expand_semantic_query(query: str) -> str:
     if "differ as players" in q or "different as players" in q:
         return f"{query} {season} player comparison season summary shot style recent summary"
 
-    return f"{query} {season}"
+    return f"{query} {season}" if season else query
 
 
 def extract_query_players(query: str) -> list[str]:
@@ -203,16 +219,33 @@ def filter_docs_by_player_name(docs: list[dict], player_names: list[str]) -> lis
     filtered = []
 
     for doc in docs:
-        text_lower = doc["text"].lower()
-        meta_player = str(doc.get("metadata", {}).get("player_name", "")).lower()
-        if any(name in text_lower or name == meta_player for name in player_names_lower):
+        metadata = doc.get("metadata", {})
+        doc_type = str(metadata.get("doc_type", "")).strip()
+        meta_player = str(metadata.get("player_name", "")).lower().strip()
+
+        if doc_type in CORPUS_DOC_TYPES:
+            filtered.append(doc)
+            continue
+
+        if meta_player and meta_player in player_names_lower:
             filtered.append(doc)
 
     return filtered
 
 
-def doc_type_priority_for_query(query: str) -> list[str]:
+def doc_type_priority_for_query(query: str, route_info: dict | None = None) -> list[str]:
     q = query.lower()
+    route_info = route_info or {}
+
+    if route_info.get("intent") == "corpus_lookup":
+        return [
+            "corpus_overview",
+            "season_coverage",
+            "coverage_by_doc_type",
+            "season_summary",
+            "recent_summary",
+            "shot_profile_overall",
+        ]
 
     if "what kind of player is" in q or "tell me about" in q or ("is " in q and " good" in q):
         return ["season_style", "season_summary", "recent_summary", "shot_style", "shot_profile_overall"]
@@ -226,7 +259,18 @@ def doc_type_priority_for_query(query: str) -> list[str]:
     if "differ as players" in q or "different as players" in q:
         return ["season_style", "season_summary", "recent_summary", "shot_style", "shot_profile_overall"]
 
-    return ["season_summary", "recent_summary", "season_style", "shot_style", "shot_profile_overall", "recent_game", "shot_profile_split"]
+    return [
+        "season_summary",
+        "recent_summary",
+        "season_style",
+        "shot_style",
+        "shot_profile_overall",
+        "recent_game",
+        "shot_profile_split",
+        "corpus_overview",
+        "season_coverage",
+        "coverage_by_doc_type",
+    ]
 
 
 def rerank_docs_by_doc_type(docs: list[dict], preferred_order: list[str]) -> list[dict]:
@@ -262,7 +306,6 @@ def try_structured_answer(state: dict) -> dict:
     print("[STRUCTURED ATTEMPT]", route_info)
 
     result = answer_structured_query(route_info, question)
-
     if result:
         state["answer"] = result["answer"]
         state["final_answer"] = result["answer"]
@@ -282,8 +325,14 @@ def retrieve_context(state: dict) -> dict:
         return state
 
     question = state["question"]
-    expanded_query = expand_semantic_query(question)
-    player_names = extract_query_players(question)
+    route_info = state.get("route_info", {})
+
+    expanded_query = expand_semantic_query(question, route_info=route_info)
+
+    if route_info.get("intent") == "corpus_lookup":
+        player_names = []
+    else:
+        player_names = extract_query_players(question)
 
     all_docs = _get_all_docs()
 
@@ -292,7 +341,7 @@ def retrieve_context(state: dict) -> dict:
     else:
         candidate_docs = all_docs
 
-    preferred_doc_types = doc_type_priority_for_query(question)
+    preferred_doc_types = doc_type_priority_for_query(question, route_info=route_info)
     candidate_docs = rerank_docs_by_doc_type(candidate_docs, preferred_doc_types)
 
     if candidate_docs:
@@ -309,11 +358,9 @@ def retrieve_context(state: dict) -> dict:
         print(f"[{i}] {doc['text'][:300]}")
 
     context = format_semantic_context(docs)
-
     state["retrieved_docs"] = docs
     state["context"] = context
     state["retrieval_mode"] = "semantic_faiss"
-
     return state
 
 
@@ -323,11 +370,10 @@ def answer_question(state: dict) -> dict:
 
     question = state["question"]
     context = state.get("context", "")
-
     answer = _generate_llm_answer(question, context)
+
     state["answer"] = answer
     state["final_answer"] = answer
-
     return state
 
 
@@ -354,7 +400,6 @@ if __name__ == "__main__":
 
             print("\n--- Answer ---")
             print(result.get("final_answer", result.get("answer", "No answer generated.")))
-
         except KeyboardInterrupt:
             break
         except Exception as exc:

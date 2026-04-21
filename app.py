@@ -12,7 +12,7 @@ Requirements
 - FAISS index must be built first:
     python -m rag.ingest
     python -m rag.build_index
-- Ollama must be running locally with llama3.2 + nomic-embed-text pulled.
+- Ollama must be running locally with llama3.3 + nomic-embed-text pulled.
 """
 
 import random
@@ -410,12 +410,12 @@ def run_query(question: str) -> None:
 # Suggestion chips
 # ---------------------------------------------------------------------------
 SUGGESTED = [
-    "Who dominates rebounds?",
+    "What data do you have access to?",
     "Best 3-point shooters",
-    "Assists leaders this season",
-    "LeBron career stats",
-    "Double-double under 25",
-    "Best scoring average",
+    "Who was the highest scorer in 2024-25?",
+    "Who dominates rebounds?",
+    "Who shoots the best from the corners?",
+    "Who is the best scorer in the paint?",
 ]
 
 # ---------------------------------------------------------------------------

@@ -78,12 +78,17 @@ def _normalize_name(text: str) -> str:
 def extract_player_names(query: str, valid_names: list[str], max_players: int = 2) -> list[str]:
     """
     Improved player extraction:
-    - matches full names
-    - matches last names
-    - matches distinctive first names
+    - matches full names exactly in normalized text
+    - matches last names only as full tokens
+    - matches distinctive first names only as full tokens
     - strips accents for names like Jokić -> Jokic
+
+    This avoids false positives like:
+    - "seasons" matching "Eason"
     """
+
     q = _normalize_name(query)
+    q_tokens = set(q.split())
     matches = []
 
     for name in valid_names:
@@ -96,13 +101,13 @@ def extract_player_names(query: str, valid_names: list[str], max_players: int = 
 
         if parts:
             last_name = parts[-1]
-            if len(last_name) >= 4 and last_name in q:
+            if len(last_name) >= 4 and last_name in q_tokens:
                 matches.append(name)
                 continue
 
         if parts:
             first_name = parts[0]
-            if len(first_name) >= 5 and first_name in q:
+            if len(first_name) >= 5 and first_name in q_tokens:
                 matches.append(name)
                 continue
 

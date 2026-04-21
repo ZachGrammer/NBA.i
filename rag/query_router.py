@@ -4,9 +4,9 @@ query_router.py
 Lightweight query classifier for deciding whether a question should be answered
 from structured stats or from semantic retrieval (FAISS).
 
-Adds season extraction so structured answers can hard-filter by season.
-If no season is mentioned, downstream code should assume the most recent
-completed season (2024-25).
+Adds:
+- season extraction so structured answers can hard-filter by season
+- a corpus/meta semantic route for questions about what data exists in the system
 """
 
 from __future__ import annotations
@@ -29,7 +29,6 @@ def _has_any(text: str, phrases: list[str]) -> bool:
 def extract_season_reference(query: str) -> str | None:
     q = _normalize(query)
 
-    # explicit season like 2023-24
     match = re.search(r"\b(20\d{2}-\d{2})\b", q)
     if match:
         return match.group(1)
@@ -43,59 +42,136 @@ def extract_season_reference(query: str) -> str | None:
     return None
 
 
+def _is_corpus_lookup_query(q: str) -> bool:
+    corpus_phrases = [
+        "what seasons do you have",
+        "what season do you have",
+        "which seasons do you have",
+        "what data do you have",
+        "what data is in the system",
+        "what does the corpus contain",
+        "what is in the corpus",
+        "what players do you have",
+        "which players do you have",
+        "which players have data",
+        "who has data",
+        "who do you have data for",
+        "who has recent games",
+        "who has recent game data",
+        "who has shot data",
+        "who has shot profile data",
+        "who has shot profile",
+        "what players have recent games",
+        "what players have shot data",
+        "what players have shot profile data",
+        "do you have data for",
+        "do you cover",
+        "what is covered",
+        "what does this system cover",
+        "what seasons are available",
+        "which seasons are available",
+    ]
+    return _has_any(q, corpus_phrases)
+
+
 def classify_query(query: str) -> dict:
     q = _normalize(query)
 
-    asks_top = _has_any(q, [
-        "best", "top", "highest", "most", "leader", "leaders"
-    ])
+    asks_top = _has_any(q, ["best", "top", "highest", "most", "leader", "leaders"])
 
     asks_compare = (
-        _has_any(q, [
-            "compare", "vs", "versus", "better than",
-            "different from", "difference between", "differ"
-        ])
+        _has_any(
+            q,
+            [
+                "compare",
+                "vs",
+                "versus",
+                "better than",
+                "different from",
+                "difference between",
+                "differ",
+            ],
+        )
         or (
-            _has_any(q, ["how do", "how does", "what is the difference between", "what's the difference between"])
+            _has_any(
+                q,
+                [
+                    "how do",
+                    "how does",
+                    "what is the difference between",
+                    "what's the difference between",
+                ],
+            )
             and _has_any(q, [" and ", " differ", " different"])
         )
     )
 
-    mentions_recent = _has_any(q, [
-        "last 5", "last five", "recent", "recently", "lately"
-    ])
+    mentions_recent = _has_any(q, ["last 5", "last five", "recent", "recently", "lately"])
 
-    mentions_shooting_zone = _has_any(q, [
-        "corner", "corners", "corner 3", "corner three",
-        "above the break", "restricted area",
-        "mid-range", "midrange",
-        "paint", "rim",
-        "shot profile", "shot zone",
-        "from three", "from 3", "3-point", "three-point"
-    ])
+    mentions_shooting_zone = _has_any(
+        q,
+        [
+            "corner",
+            "corners",
+            "corner 3",
+            "corner three",
+            "above the break",
+            "restricted area",
+            "mid-range",
+            "midrange",
+            "paint",
+            "rim",
+            "shot profile",
+            "shot zone",
+            "from three",
+            "from 3",
+            "3-point",
+            "three-point",
+        ],
+    )
 
-    asks_shooter = _has_any(q, [
-        "best shooter", "top shooter", "better shooter", "shoots best"
-    ])
+    asks_shooter = _has_any(q, ["best shooter", "top shooter", "better shooter", "shoots best"])
 
-    asks_recent_form = _has_any(q, [
-        "how has", "how is", "how was", "how's", "hows"
-    ]) and _has_any(q, [
-        "been playing", "performed", "playing lately", "playing recently", "played lately", "played recently"
-    ])
+    asks_recent_form = _has_any(q, ["how has", "how is", "how was", "how's", "hows"]) and _has_any(
+        q,
+        [
+            "been playing",
+            "performed",
+            "playing lately",
+            "playing recently",
+            "played lately",
+            "played recently",
+        ],
+    )
 
-    asks_player_summary = _has_any(q, [
-        "how good is", "tell me about", "what kind of player is",
-        "what kind of player", "summarize", "is "
-    ])
+    asks_player_summary = _has_any(
+        q,
+        [
+            "how good is",
+            "tell me about",
+            "what kind of player is",
+            "what kind of player",
+            "summarize",
+            "is ",
+        ],
+    )
 
     stat = None
-
     if _has_any(q, ["3 point", "three point", "3pt", "3-point", "from three", "from 3"]):
         stat = "fg3_pct"
     elif _has_any(q, ["free throw", "ft%"]):
         stat = "ft_pct"
-    elif _has_any(q, ["field goal percentage", "fg%", "shooting percentage", "best shooter", "top shooter", "shoots best"]):
+    elif _has_any(
+        q,
+        [
+            "field goal percentage",
+            "fg%",
+            "shooting percentage",
+            "best shooter",
+            "top shooter",
+            "shoots best",
+        ],
+    ):
         stat = "fg_pct"
     elif _has_any(q, ["points", "score", "scoring"]):
         stat = "points"
@@ -113,7 +189,18 @@ def classify_query(query: str) -> dict:
         zone = "Left Corner 3"
     elif _has_any(q, ["right corner 3", "right corner three"]):
         zone = "Right Corner 3"
-    elif _has_any(q, ["corner 3", "corner three", "corners", "from the corners", "from corners", "corner shots", "corner shooting"]):
+    elif _has_any(
+        q,
+        [
+            "corner 3",
+            "corner three",
+            "corners",
+            "from the corners",
+            "from corners",
+            "corner shots",
+            "corner shooting",
+        ],
+    ):
         zone = "corner3_combined"
     elif _has_any(q, ["above the break"]):
         zone = "Above the Break 3"
@@ -133,6 +220,17 @@ def classify_query(query: str) -> dict:
         timeframe = "recent"
 
     season = extract_season_reference(query)
+
+    if _is_corpus_lookup_query(q):
+        return {
+            "route": "semantic",
+            "intent": "corpus_lookup",
+            "stat": stat,
+            "timeframe": timeframe,
+            "season": season,
+            "zone": zone,
+            "comparison": False,
+        }
 
     if asks_compare:
         return {

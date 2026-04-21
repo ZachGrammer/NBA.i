@@ -4633,6 +4633,30 @@ player_id,player_name,team_abbreviation,season,split_type,split_value,attempts,m
 1627832,Fred VanVleet,TOR,2021-22,shot_zone_range,16-24 ft.,132,59,44.7
 1627832,Fred VanVleet,TOR,2021-22,shot_zone_range,8-16 ft.,132,54,40.9
 1627832,Fred VanVleet,TOR,2021-22,shot_zone_range,Back Court Shot,6,0,0.0
+1629018,Gary Trent Jr.,TOR,2021-22,distance_band,25+ ft,373,146,39.1
+1629018,Gary Trent Jr.,TOR,2021-22,distance_band,20-24 ft,217,78,35.9
+1629018,Gary Trent Jr.,TOR,2021-22,distance_band,15-19 ft,166,69,41.6
+1629018,Gary Trent Jr.,TOR,2021-22,distance_band,0-3 ft,121,67,55.4
+1629018,Gary Trent Jr.,TOR,2021-22,distance_band,9-14 ft,112,53,47.3
+1629018,Gary Trent Jr.,TOR,2021-22,distance_band,4-8 ft,97,37,38.1
+1629018,Gary Trent Jr.,TOR,2021-22,shot_zone_area,Center(C),464,212,45.7
+1629018,Gary Trent Jr.,TOR,2021-22,shot_zone_area,Left Side Center(LC),231,91,39.4
+1629018,Gary Trent Jr.,TOR,2021-22,shot_zone_area,Right Side Center(RC),191,69,36.1
+1629018,Gary Trent Jr.,TOR,2021-22,shot_zone_area,Left Side(L),114,49,43.0
+1629018,Gary Trent Jr.,TOR,2021-22,shot_zone_area,Right Side(R),84,29,34.5
+1629018,Gary Trent Jr.,TOR,2021-22,shot_zone_area,Back Court(BC),2,0,0.0
+1629018,Gary Trent Jr.,TOR,2021-22,shot_zone_basic,Above the Break 3,433,169,39.0
+1629018,Gary Trent Jr.,TOR,2021-22,shot_zone_basic,Mid-Range,248,101,40.7
+1629018,Gary Trent Jr.,TOR,2021-22,shot_zone_basic,In The Paint (Non-RA),173,73,42.2
+1629018,Gary Trent Jr.,TOR,2021-22,shot_zone_basic,Restricted Area,121,67,55.4
+1629018,Gary Trent Jr.,TOR,2021-22,shot_zone_basic,Left Corner 3,62,22,35.5
+1629018,Gary Trent Jr.,TOR,2021-22,shot_zone_basic,Right Corner 3,48,18,37.5
+1629018,Gary Trent Jr.,TOR,2021-22,shot_zone_basic,Backcourt,1,0,0.0
+1629018,Gary Trent Jr.,TOR,2021-22,shot_zone_range,24+ ft.,542,209,38.6
+1629018,Gary Trent Jr.,TOR,2021-22,shot_zone_range,Less Than 8 ft.,202,100,49.5
+1629018,Gary Trent Jr.,TOR,2021-22,shot_zone_range,16-24 ft.,182,69,37.9
+1629018,Gary Trent Jr.,TOR,2021-22,shot_zone_range,8-16 ft.,158,72,45.6
+1629018,Gary Trent Jr.,TOR,2021-22,shot_zone_range,Back Court Shot,2,0,0.0
 203507,Giannis Antetokounmpo,MIL,2021-22,distance_band,0-3 ft,580,444,76.6
 203507,Giannis Antetokounmpo,MIL,2021-22,distance_band,25+ ft,219,63,28.8
 203507,Giannis Antetokounmpo,MIL,2021-22,distance_band,9-14 ft,151,66,43.7
