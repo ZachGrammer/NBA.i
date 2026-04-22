@@ -124,19 +124,76 @@ def _cosine_score(query_vec: np.ndarray, doc_vec: np.ndarray) -> float:
 
 
 def rank_docs_by_query(query: str, docs: list[dict], top_k: int = TOP_K) -> list[dict]:
+    """
+    Rank the provided candidate docs using the existing FAISS index.
+
+    Important:
+    - Keeps the same signature as the old function.
+    - Returns the same type: list[dict].
+    - Returns up to `top_k` docs, just like before.
+    - Avoids re-embedding documents at query time.
+
+    Strategy:
+    1. Embed the query once.
+    2. Search FAISS over the whole corpus for a larger candidate pool.
+    3. Keep only results that are in the provided `docs` candidate set.
+    4. Return up to `top_k` filtered results.
+    5. If not enough results are found, fall back to the original candidate order.
+    """
     if not docs:
         return []
 
-    query_vec = np.array(get_embedding(query), dtype="float32")
-    scored = []
+    index, metadata = _load_vectorstore()
 
-    for doc in docs:
-        doc_vec = np.array(get_embedding(doc["text"]), dtype="float32")
-        score = _cosine_score(query_vec, doc_vec)
-        scored.append((score, doc))
+    # Normalize candidate docs into a stable key set for quick membership checks.
+    # Prefer text as the key because your pipeline already treats text as the
+    # primary semantic unit and your normalized docs are text+metadata dicts.
+    candidate_texts = {str(doc.get("text", "")) for doc in docs if doc.get("text", "")}
 
-    scored.sort(key=lambda x: x[0], reverse=True)
-    return [doc for _, doc in scored[:top_k]]
+    # Embed ONLY the query.
+    query_embedding = np.array([get_embedding(query)], dtype="float32")
+    faiss.normalize_L2(query_embedding)
+
+    # Search a larger pool so we have enough hits after candidate filtering.
+    # Bound it so we don't ask FAISS for more than it contains.
+    search_k = min(max(top_k * 10, 50), index.ntotal)
+
+    _, indices = index.search(query_embedding, search_k)
+
+    ranked_docs: list[dict] = []
+    seen_texts: set[str] = set()
+
+    for idx in indices[0]:
+        if idx == -1:
+            continue
+
+        doc = _normalize_doc(metadata[idx])
+        text = doc.get("text", "")
+
+        if not text or text in seen_texts:
+            continue
+
+        if text in candidate_texts:
+            ranked_docs.append(doc)
+            seen_texts.add(text)
+
+        if len(ranked_docs) >= top_k:
+            break
+
+    # Fallback: if FAISS did not return enough matches from the candidate set,
+    # preserve the original candidate order to keep output stable and ensure
+    # the function still returns up to `top_k` docs.
+    if len(ranked_docs) < top_k:
+        for doc in docs:
+            text = str(doc.get("text", ""))
+            if text and text not in seen_texts:
+                ranked_docs.append(doc)
+                seen_texts.add(text)
+
+            if len(ranked_docs) >= top_k:
+                break
+
+    return ranked_docs[:top_k]
 
 
 def retrieve_semantic_docs_global(query: str, k: int = TOP_K) -> list[dict]:
